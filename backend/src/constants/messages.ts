@@ -8,6 +8,8 @@ export const Messages = {
   GOAL_CREATED: 'Goal created and progress linked to activities',
   GOAL_UPDATED: 'Goal status updated',
   FACTOR_CREATED: 'Carbon factor stored for region matching',
+  REGION_QUOTA_SAVED: 'Region monthly emission quota stored',
+  REGION_QUOTA_DELETED: 'Region monthly emission quota removed',
   AUDIT_LOGGED: 'Audit log captured',
   BACKEND_SHARED: 'Shared backend/frontend copy used by coupled message constants'
 } as const;

@@ -64,6 +64,15 @@ CREATE TABLE IF NOT EXISTS goals (
   KEY idx_goal_user_status (user_id, status)
 );
 
+CREATE TABLE IF NOT EXISTS region_quotas (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  region VARCHAR(64) NOT NULL,
+  month CHAR(7) NOT NULL,
+  quota_value DECIMAL(12,2) NOT NULL,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_region_month (region, month)
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NULL,
@@ -110,3 +119,6 @@ INSERT IGNORE INTO goals (id, user_id, title, target_value, period_type, start_d
 
 INSERT IGNORE INTO audit_logs (id, user_id, action, entity, entity_id, detail, ip) VALUES
   (1, 1, 'seed', 'System', 1, 'System[id=1] seed completed: demo data ready', '127.0.0.1');
+
+INSERT IGNORE INTO region_quotas (region, month, quota_value) VALUES
+  ('Shanghai', DATE_FORMAT(CURRENT_DATE(), '%Y-%m'), 500.00);

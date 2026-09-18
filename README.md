@@ -26,10 +26,12 @@ docker compose down
 - 用户注册、登录、JWT 认证和 RBAC 权限校验
 - 活动记录新增、编辑、删除、分类筛选和分页列表
 - CarbonFactor 按地区与分类匹配并自动计算 `carbon_value`
-- 仪表盘展示今日、本周、本月碳排放和趋势图
+- **地区月度排放额度**：管理员按月、按地区设定可排放上限；写入/修改/移除活动时占用值随核算结果在同一事务内增减，超出上限的整笔写入直接拒绝，同地区并发提交通过行锁串行化，只有仍在额度内的记录成功
+- 仪表盘展示今日、本周、本月碳排放和趋势图，并展示本地区当月额度的已用、剩余及超限状态
 - 目标管理展示目标完成进度和到期区间
-- 排行榜按地区和时间段查看用户低碳排名
-- 管理员查看操作审计日志
+- 排行榜按地区和时间段查看用户低碳排名（始终按真实排放计算，不受额度拦截影响）
+- 管理员查看操作审计日志、配置地区月度额度
+- 未配置额度的地区保持原来的记录方式，不设上限
 
 ## 本地开发方式（备选）
 
@@ -121,6 +123,16 @@ npm run dev
 - Activity：`database/init.sql` → `backend/src/models/activity.ts` → `backend/src/services/activityService.ts` → `backend/src/controllers/activityController.ts` → `backend/src/routes/activities.ts` → `frontend/src/api/activity.ts` → `frontend/src/stores/activityStore.ts` → `frontend/src/pages/Activities.tsx`
 - Goal：`database/init.sql` → `backend/src/models/goal.ts` → `backend/src/services/goalService.ts` → `backend/src/controllers/goalController.ts` → `backend/src/routes/goals.ts` → `frontend/src/api/goal.ts` → `frontend/src/stores/goalStore.ts` → `frontend/src/pages/Goals.tsx`
 - CarbonFactor：`database/init.sql` → `backend/src/models/carbonFactor.ts` → `backend/src/services/factorService.ts` → `backend/src/controllers/factorController.ts` → `backend/src/routes/factors.ts` → `frontend/src/api/factor.ts` → `frontend/src/pages/Activities.tsx`
+- RegionQuota：`database/init.sql` → `backend/src/models/regionQuota.ts` → `backend/src/services/regionQuotaService.ts` → `backend/src/controllers/regionQuotaController.ts` → `backend/src/routes/regionQuotas.ts` → `frontend/src/api/regionQuota.ts` → `frontend/src/stores/regionQuotaStore.ts` → `frontend/src/components/common/RegionQuotaCard.tsx` → `frontend/src/pages/RegionQuotas.tsx`
+
+## 地区月度排放额度（RegionQuota）
+
+- 管理员通过 `POST /api/region-quotas`（`{ region, month: 'YYYY-MM', quotaValue }`，按 `(region, month)` 唯一键 upsert）设定额度，`DELETE /api/region-quotas/:id` 移除额度，`GET /api/region-quotas` 查看全部额度，均需 `admin` 角色。
+- 成员通过 `GET /api/region-quotas/status` 获取**自己所在地区、当月**的 `{ configured, quotaValue, usedValue, remainingValue, exceeded }`。
+- 占用值不是独立计数器，而是在活动写入事务中对 `activities` 联表 `users` 按“用户当前地区 + record_date 所在月”实时 `SUM(carbon_value)` 得到，因此不存在统计漂移。
+- 新增 / 修改 / 移除活动均在单个数据库事务内完成：先以 `SELECT ... FOR UPDATE` 锁定该 `(region, month)` 的额度行（并发写同地区同月因此完全串行化），核算本次整笔写入的增量 `delta`，若 `已用 + delta > 上限` 则抛出 `REGION_QUOTA_EXCEEDED`（HTTP 409，消息含地区、月份、已用与上限）并整体回滚——不允许部分成功；未配置额度的地区直接放行，保持原记录方式。
+- 修改活动跨月时按月份升序依次锁定旧月与新月额度行（先释放旧月、再占用新月），避免死锁；移除活动只释放占用，不会被拒绝。
+- 仪表盘 `<RegionQuotaCard>` 展示当月已用、上限、剩余与超限告警；排行榜 `RankingService` 不读取额度，始终按真实成功落库的排放计算。
 
 ## 横切关注点
 

@@ -3,8 +3,10 @@ import { Card, Col, Row, Space, Statistic, Typography } from 'antd';
 import { CarbonTrendChart } from '../components/common/CarbonTrendChart';
 import { GoalProgressCard } from '../components/common/GoalProgressCard';
 import { EmptyState } from '../components/common/EmptyState';
+import { RegionQuotaCard } from '../components/common/RegionQuotaCard';
 import { useActivityStore } from '../stores/activityStore';
 import { useGoalStore } from '../stores/goalStore';
+import { useRegionQuotaStore } from '../stores/regionQuotaStore';
 import { useCarbonStats } from '../hooks/useCarbonStats';
 import { useAuth } from '../hooks/useAuth';
 import { getMonthRange } from '../utils/dateRange';
@@ -15,6 +17,9 @@ export function Dashboard() {
   const loadActivities = useActivityStore((state) => state.load);
   const goals = useGoalStore((state) => state.goals);
   const loadGoals = useGoalStore((state) => state.load);
+  const quotaStatus = useRegionQuotaStore((state) => state.status);
+  const quotaLoading = useRegionQuotaStore((state) => state.statusLoading);
+  const loadQuotaStatus = useRegionQuotaStore((state) => state.loadStatus);
   const { token } = useAuth();
   const stats = useCarbonStats(rows);
 
@@ -23,7 +28,8 @@ export function Dashboard() {
     const [start, end] = getMonthRange();
     void loadActivities({ start, end });
     void loadGoals();
-  }, [loadActivities, loadGoals, token]);
+    void loadQuotaStatus();
+  }, [loadActivities, loadGoals, loadQuotaStatus, token]);
 
   return (
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
@@ -36,6 +42,7 @@ export function Dashboard() {
         <Col xs={24} md={8}><Card><Statistic title="本周排放" value={formatCarbon(stats.weekTotal)} /></Card></Col>
         <Col xs={24} md={8}><Card><Statistic title="本月排放" value={formatCarbon(stats.monthTotal)} /></Card></Col>
       </Row>
+      <RegionQuotaCard status={quotaStatus} loading={quotaLoading} />
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={15}>
           <Card title="碳排趋势">

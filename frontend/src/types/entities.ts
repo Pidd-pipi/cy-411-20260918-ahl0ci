@@ -68,3 +68,21 @@ export interface RankingItem {
   totalCarbon: number;
 }
 
+export interface RegionQuota {
+  id: number;
+  region: string;
+  month: string;
+  quotaValue: string;
+  updatedAt: string;
+}
+
+export interface RegionQuotaStatus {
+  region: string;
+  month: string;
+  configured: boolean;
+  quotaValue: number | null;
+  usedValue: number;
+  remainingValue: number | null;
+  exceeded: boolean;
+}
+
