@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { ErrorCodes } from '../constants/errorCodes';
 import { Messages } from '../constants/messages';
 import { Role } from '../models/role';
@@ -10,6 +10,7 @@ import { AuthUser, JwtPayload } from '../types/auth';
 import { AppError } from '../utils/AppError';
 import { logTemplate } from '../utils/logger';
 import { signCarbonToken } from '../utils/jwt';
+import { QuotaService } from './quotaService';
 
 export interface RegisterInput {
   username: string;
@@ -33,7 +34,9 @@ export interface ProfileInput {
 export class UserService {
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
-    @InjectRepository(Role) private readonly roleRepo: Repository<Role>
+    @InjectRepository(Role) private readonly roleRepo: Repository<Role>,
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly quotaService: QuotaService
   ) {}
 
   serialize(user: User): AuthUser {
@@ -95,15 +98,27 @@ export class UserService {
 
   async updateProfile(userId: number, input: ProfileInput) {
     logTemplate('info', 'USER_PROFILE_UPDATE_START', { id: userId, field: Object.keys(input).join(',') || 'none' });
-    const user = await this.findById(userId);
-    user.username = input.username ?? user.username;
-    user.avatar = input.avatar ?? user.avatar;
-    user.region = input.region ?? user.region;
     try {
-      const saved = await this.userRepo.save(user);
+      const saved = await this.dataSource.transaction(async (manager) => {
+        const user = await manager.getRepository(User).findOne({ where: { id: userId }, relations: ['roles'] });
+        if (!user) {
+          throw new AppError(ErrorCodes.USER_NOT_FOUND, `User[id=${userId}] update failed: id not found`, HttpStatus.NOT_FOUND);
+        }
+        const previousRegion = user.region;
+        user.username = input.username ?? user.username;
+        user.avatar = input.avatar ?? user.avatar;
+        user.region = input.region ?? user.region;
+        const persisted = await manager.getRepository(User).save(user);
+        // 地区变更会改变历史活动的额度归属，重算相关地区月份防止占用值漂移
+        if (input.region && input.region !== previousRegion) {
+          await this.quotaService.reconcileUserRegions(manager, userId, previousRegion, persisted.region);
+        }
+        return persisted;
+      });
       logTemplate('info', 'USER_PROFILE_UPDATE_SUCCESS', { id: userId, region: saved.region });
       return { message: Messages.USER_PROFILE_UPDATED, user: this.serialize(saved) };
     } catch (error) {
+      if (error instanceof AppError) throw error;
       logTemplate('error', 'USER_PROFILE_UPDATE_FAILED', { id: userId, field: 'profile', reason: String(error) });
       throw new AppError(ErrorCodes.DATABASE_FAILED, `User[id=${userId}] update failed: profile ${String(error)}`);
     }

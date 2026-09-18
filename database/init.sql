@@ -64,6 +64,20 @@ CREATE TABLE IF NOT EXISTS goals (
   KEY idx_goal_user_status (user_id, status)
 );
 
+CREATE TABLE IF NOT EXISTS region_quotas (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  region VARCHAR(64) NOT NULL,
+  month CHAR(7) NOT NULL,
+  quota_value DECIMAL(12,2) NOT NULL,
+  used_value DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_quota_region_month (region, month),
+  CONSTRAINT chk_quota_value_positive CHECK (quota_value >= 0),
+  CONSTRAINT chk_quota_used_non_negative CHECK (used_value >= 0),
+  KEY idx_quota_month (month)
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   user_id BIGINT NULL,
@@ -110,3 +124,13 @@ INSERT IGNORE INTO goals (id, user_id, title, target_value, period_type, start_d
 
 INSERT IGNORE INTO audit_logs (id, user_id, action, entity, entity_id, detail, ip) VALUES
   (1, 1, 'seed', 'System', 1, 'System[id=1] seed completed: demo data ready', '127.0.0.1');
+
+INSERT IGNORE INTO region_quotas (region, month, quota_value, used_value)
+SELECT 'Shanghai', DATE_FORMAT(CURRENT_DATE(), '%Y-%m'), 10.00, COALESCE(monthly.used_value, 0.00)
+FROM (
+  SELECT SUM(a.carbon_value) AS used_value
+  FROM activities a
+  JOIN users u ON u.id = a.user_id
+  WHERE u.region = 'Shanghai'
+    AND DATE_FORMAT(a.record_date, '%Y-%m') = DATE_FORMAT(CURRENT_DATE(), '%Y-%m')
+) AS monthly;

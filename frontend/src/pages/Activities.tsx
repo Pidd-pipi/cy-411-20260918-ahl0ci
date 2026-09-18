@@ -51,9 +51,13 @@ export function Activities() {
           layout="vertical"
           initialValues={{ category: ActivityCategory.TRANSPORT, subType: 'metro', unit: 'km', recordDate: dayjs() }}
           onFinish={async (values) => {
-            await add({ ...values, recordDate: values.recordDate.format('YYYY-MM-DD') });
-            message.success(Messages.FRONTEND_ACTIVITY_SAVED);
-            setOpen(false);
+            try {
+              await add({ ...values, recordDate: values.recordDate.format('YYYY-MM-DD') });
+              message.success(Messages.FRONTEND_ACTIVITY_SAVED);
+              setOpen(false);
+            } catch {
+              // 超限时拦截器已明确提示，保持弹窗打开以便调整数量/日期
+            }
           }}
         >
           <Form.Item name="category" label="分类" rules={[{ required: true }]}>

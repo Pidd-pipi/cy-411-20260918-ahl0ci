@@ -29,6 +29,7 @@ docker compose down
 - 仪表盘展示今日、本周、本月碳排放和趋势图
 - 目标管理展示目标完成进度和到期区间
 - 排行榜按地区和时间段查看用户低碳排名
+- **地区月度排放额度（RegionQuota）**：管理员按月给地区设定可排放上限；成员写入/修改/移除活动时占用值在同一事务内随核算结果同步增减，超限时整笔拒绝（HTTP 409，无部分成功、无统计漂移）；仪表盘展示当月已用、剩余及超限状态；未配置额度的地区沿用原有记录方式
 - 管理员查看操作审计日志
 
 ## 本地开发方式（备选）
@@ -121,6 +122,7 @@ npm run dev
 - Activity：`database/init.sql` → `backend/src/models/activity.ts` → `backend/src/services/activityService.ts` → `backend/src/controllers/activityController.ts` → `backend/src/routes/activities.ts` → `frontend/src/api/activity.ts` → `frontend/src/stores/activityStore.ts` → `frontend/src/pages/Activities.tsx`
 - Goal：`database/init.sql` → `backend/src/models/goal.ts` → `backend/src/services/goalService.ts` → `backend/src/controllers/goalController.ts` → `backend/src/routes/goals.ts` → `frontend/src/api/goal.ts` → `frontend/src/stores/goalStore.ts` → `frontend/src/pages/Goals.tsx`
 - CarbonFactor：`database/init.sql` → `backend/src/models/carbonFactor.ts` → `backend/src/services/factorService.ts` → `backend/src/controllers/factorController.ts` → `backend/src/routes/factors.ts` → `frontend/src/api/factor.ts` → `frontend/src/pages/Activities.tsx`
+- RegionQuota：`database/init.sql` → `backend/src/models/regionQuota.ts` → `backend/src/services/quotaService.ts` → `backend/src/controllers/quotaController.ts` → `backend/src/routes/quotas.ts` → `frontend/src/api/quota.ts` → `frontend/src/stores/quotaStore.ts` → `frontend/src/components/common/QuotaStatusCard.tsx`（仪表盘）+ `frontend/src/pages/Quotas.tsx`（管理员配置页）。额度占用的写入横切在 `activityService.ts` 的新增/修改/删除事务中，并在 `userService.ts` 用户变更地区时按真实活动对账。
 
 ## 横切关注点
 
@@ -143,6 +145,24 @@ npm run dev
 - 后端引用：`backend/src/constants/errorCodes.ts`、`backend/src/constants/logTemplates.ts`、`backend/src/models/goal.ts`、`backend/src/services/goalService.ts`、`backend/src/routes/goals.ts`
 - 前端定义：`frontend/src/constants/goal.ts`
 - 前端引用：`frontend/src/constants/errorCodes.ts`、`frontend/src/constants/messages.ts`、`frontend/src/types/entities.ts`、`frontend/src/api/goal.ts`、`frontend/src/components/common/GoalProgressCard.tsx`、`frontend/src/pages/Goals.tsx`、`frontend/src/utils/formatters.ts`
+
+### QuotaStatus
+
+- 后端定义：`backend/src/types/quota.ts`（`unconfigured | active | full | exceeded`）
+- 后端引用：`backend/src/constants/errorCodes.ts`、`backend/src/constants/logTemplates.ts`、`backend/src/services/quotaService.ts`、`backend/src/controllers/quotaController.ts`
+- 前端定义：`frontend/src/types/quota.ts`，标签/颜色映射在 `frontend/src/constants/quota.ts`
+- 前端引用：`frontend/src/constants/errorCodes.ts`、`frontend/src/constants/messages.ts`、`frontend/src/api/quota.ts`、`frontend/src/stores/quotaStore.ts`、`frontend/src/components/common/QuotaStatusCard.tsx`、`frontend/src/pages/Quotas.tsx`、`frontend/src/utils/formatters.ts`、`frontend/src/utils/request.ts`
+
+## 地区月度额度接口与一致性
+
+| 方法 | 路径 | 权限 | 说明 |
+| --- | --- | --- | --- |
+| GET | `/api/quotas/me?month=YYYY-MM` | 登录成员 | 本地区当月已用、剩余、状态；未配置返回 `configured:false` |
+| GET | `/api/quotas?region=&month=` | admin | 额度配置列表 |
+| POST | `/api/quotas` | admin | 按 `{region, month, quotaValue}` 设定上限，重复提交整笔覆盖并按真实活动重算占用 |
+| DELETE | `/api/quotas/:region/:month` | admin | 移除配置，该地区恢复原有记录方式 |
+
+写入一致性：活动的新增/修改/删除与 `region_quotas.used_value` 更新包在同一个数据库事务中，先以 `SELECT ... FOR UPDATE` 锁定 `(region, month)` 额度行再核对占用。同地区多人并发提交时在行锁上串行化，最终额度内的记录成功，超出者整笔回滚并返回 `409 QUOTA_EXCEEDED`，前端明确提示超限，不产生部分成功。排行榜与统计始终读取 `activities.carbon_value` 真实核算值，额度只控制能否写入，不影响排行口径。
 
 ## 强制分层与耦合设计
 

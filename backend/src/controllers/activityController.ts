@@ -24,8 +24,8 @@ export class ActivityController {
     try {
       return await this.activityService.create(request.user!.id, body);
     } catch (error: any) {
-      logTemplate('error', 'ACTIVITY_CREATE_FAILED', { id: 0, field: 'Activity.category', reason: error.message });
-      throw new AppError(error.code || ErrorCodes.VALIDATION_FAILED, `Activity[id=0] controller create failed: category ${error.message}`, error.status || HttpStatus.BAD_REQUEST);
+      logTemplate('error', 'ACTIVITY_CREATE_FAILED', { id: 0, field: 'Activity.create', reason: error.message });
+      throw new AppError(error.code || ErrorCodes.VALIDATION_FAILED, `Activity[id=0] controller create failed: ${error.message}`, error.status || HttpStatus.BAD_REQUEST);
     }
   }
 
